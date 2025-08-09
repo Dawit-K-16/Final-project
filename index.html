@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>🌍 World Explorer</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <!-- Highcharts -->
+  <script src="https://code.highcharts.com/maps/highmaps.js"></script>
+  <script src="https://code.highcharts.com/maps/modules/exporting.js"></script>
+  <script src="https://code.highcharts.com/maps/modules/accessibility.js"></script>
+
+  <!-- Bootstrap -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+
+<nav class="navbar navbar-dark bg-dark">
+  <div class="container justify-content-between">
+    <a class="navbar-brand mb-0 h1" href="#">🌍 World Explorer Map</a>
+    <div>
+      <a href="#mapSection" class="btn btn-outline-light btn-sm me-2">Map</a>
+      <a href="#chartsSection" class="btn btn-outline-light btn-sm">Charts</a>
+    </div>
+  </div>
+</nav>
+
+<!-- Map -->
+<div id="mapSection">
+  <div id="container"></div>
+</div>
+
+<!-- Country Cards -->
+<div id="cardContainer" class="container mt-4 d-flex flex-wrap gap-4 justify-content-center"></div>
+
+<!-- Charts -->
+<div id="chartsSection" class="container mt-5">
+  <div class="row">
+    <div class="col-md-6 mb-4">
+      <div class="card h-100 shadow-sm">
+        <div class="card-body">
+          <h5 class="card-title">Population</h5>
+          <canvas id="pieChart" style="max-height: 300px;"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-md-6 mb-4">
+      <div class="card h-100 shadow-sm">
+        <div class="card-body">
+          <h5 class="card-title">Area</h5>
+          <canvas id="barChart" style="max-height: 300px;"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  // Style setup via DOM
+  document.body.style.background = "#f4f4f4";
+  document.body.style.fontFamily = "sans-serif";
+
+  const mapContainer = document.getElementById("container");
+  mapContainer.style.height = "500px";
+  mapContainer.style.width = "95%";
+  mapContainer.style.maxWidth = "900px";
+  mapContainer.style.margin = "20px auto";
+  mapContainer.style.background = "white";
+  mapContainer.style.borderRadius = "10px";
+  mapContainer.style.boxShadow = "0 4px 10px rgba(0,0,0,0.1)";
+
+  const getGraticule = () => {
+    const data = [];
+    for (let x = -180; x <= 180; x += 15) {
+      data.push({ geometry: { type: 'LineString', coordinates: x % 90 === 0 ? [[x, -90], [x, 0], [x, 90]] : [[x, -80], [x, 80]] } });
+    }
+    for (let y = -90; y <= 90; y += 10) {
+      const coordinates = [];
+      for (let x = -180; x <= 180; x += 5) {
+        coordinates.push([x, y]);
+      }
+      data.push({ geometry: { type: 'LineString', coordinates }, lineWidth: y === 0 ? 2 : undefined });
+    }
+    return data;
+  };
+
+  // Charts
+  let pieChart, barChart;
+
+  pieChart = new Chart(document.getElementById('pieChart').getContext('2d'), {
+    type: 'pie',
+    data: {
+      labels: [],
+      datasets: [{ label: 'Population', data: [], backgroundColor: [], borderWidth: 1 }]
+    },
+    options: { responsive: true, maintainAspectRatio: false }
+  });
+
+  barChart = new Chart(document.getElementById('barChart').getContext('2d'), {
+    type: 'bar',
+    data: {
+      labels: [],
+      datasets: [{ label: 'Area (km²)', data: [], backgroundColor: '#28a745' }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: { y: { beginAtZero: true } }
+    }
+  });
+
+  function getRandomColor() {
+    const r = Math.floor(Math.random() * 255);
+    const g = Math.floor(Math.random() * 255);
+    const b = Math.floor(Math.random() * 255);
+    return `rgb(${r}, ${g}, ${b})`;
+  }
+
+  function updateCharts(name, population, area) {
+    if (pieChart.data.labels.includes(name)) return;
+    pieChart.data.labels.push(name);
+    pieChart.data.datasets[0].data.push(population);
+    pieChart.data.datasets[0].backgroundColor.push(getRandomColor());
+    pieChart.update();
+
+    barChart.data.labels.push(name);
+    barChart.data.datasets[0].data.push(area);
+    barChart.update();
+  }
+
+  function removeCountry(name) {
+    const pieIndex = pieChart.data.labels.indexOf(name);
+    if (pieIndex !== -1) {
+      pieChart.data.labels.splice(pieIndex, 1);
+      pieChart.data.datasets[0].data.splice(pieIndex, 1);
+      pieChart.data.datasets[0].backgroundColor.splice(pieIndex, 1);
+      pieChart.update();
+    }
+    const barIndex = barChart.data.labels.indexOf(name);
+    if (barIndex !== -1) {
+      barChart.data.labels.splice(barIndex, 1);
+      barChart.data.datasets[0].data.splice(barIndex, 1);
+      barChart.update();
+    }
+    const card = document.querySelector(`[data-country="${name}"]`);
+    if (card) card.remove();
+  }
+
+  // Highcharts map
+  Highcharts.getJSON('https://code.highcharts.com/mapdata/custom/world.topo.json', topology => {
+    const chart = Highcharts.mapChart('container', {
+      chart: { map: topology, backgroundColor: '#ffffff' },
+      title: { text: null },
+      legend: { enabled: false },
+      mapNavigation: {
+        enabled: true,
+        enableDoubleClickZoomTo: true,
+        buttonOptions: { verticalAlign: 'bottom' }
+      },
+      mapView: {
+        maxZoom: 30,
+        projection: { name: 'Orthographic', rotation: [60, -30] }
+      },
+      tooltip: { headerFormat: '', pointFormat: '{point.name}' },
+      plotOptions: {
+        series: {
+          animation: { duration: 750 },
+          clip: false
+        },
+        map: {
+          states: {
+            hover: { color: '#a4edba', borderColor: '#333333' }
+          },
+          point: {
+            events: {
+              click: function () {
+                const countryName = this.name;
+                fetch(`https://restcountries.com/v3.1/name/${encodeURIComponent(countryName)}?fullText=true`)
+                  .then(res => res.json())
+                  .then(data => {
+                    const country = data[0];
+                    const name = country.name.common;
+                    const capital = country.capital?.[0] || 'N/A';
+                    const population = country.population || 0;
+                    const area = country.area || 0;
+                    const flagUrl = country.flags?.png;
+
+                    const card = document.createElement('div');
+                    card.className = 'country-card';
+                    card.setAttribute("data-country", name);
+                    card.style.background = "white";
+                    card.style.borderRadius = "10px";
+                    card.style.boxShadow = "0 2px 10px rgba(0,0,0,0.1)";
+                    card.style.padding = "16px";
+                    card.style.maxWidth = "250px";
+                    card.style.textAlign = "center";
+                    card.innerHTML = `
+                      <img src="${flagUrl}" alt="Flag of ${name}" style="width: 100%; height: auto; border-radius: 5px; border: 1px solid #ddd;">
+                      <div class="info" style="margin-top: 10px; text-align: left;">
+                        <p><strong>Country:</strong> ${name}</p>
+                        <p><strong>Capital:</strong> ${capital}</p>
+                        <p><strong>Population:</strong> ${population.toLocaleString()}</p>
+                        <button class="btn btn-sm btn-danger mt-2" onclick="removeCountry('${name}')">🗑 Remove</button>
+                      </div>
+                    `;
+                    document.getElementById('cardContainer').appendChild(card);
+
+                    updateCharts(name, population, area);
+                  });
+              }
+            }
+          }
+        }
+      },
+      series: [
+        {
+          name: 'Graticule',
+          id: 'graticule',
+          type: 'mapline',
+          data: getGraticule(),
+          nullColor: 'rgba(0, 0, 0, 0.05)',
+          accessibility: { enabled: false },
+          enableMouseTracking: false
+        },
+        {
+          type: 'map',
+          name: 'Countries',
+          joinBy: ['hc-key', 'hc-key'],
+          data: topology.objects.default.geometries.map(geo => ({
+            'hc-key': geo.properties['hc-key'],
+            name: geo.properties.name
+          })),
+          dataLabels: { enabled: false },
+          accessibility: { exposeAsGroupOnly: true }
+        }
+      ]
+    });
+
+    const renderSea = () => {
+      let verb = 'animate';
+      if (!chart.sea) {
+        chart.sea = chart.renderer
+          .circle()
+          .attr({
+            fill: {
+              radialGradient: { cx: 0.4, cy: 0.4, r: 1 },
+              stops: [[0, 'white'], [1, 'lightblue']]
+            },
+            zIndex: -1
+          })
+          .add(chart.get('graticule').group);
+        verb = 'attr';
+      }
+
+      const bounds = chart.get('graticule').bounds;
+      const p1 = chart.mapView.projectedUnitsToPixels({ x: bounds.x1, y: bounds.y1 });
+      const p2 = chart.mapView.projectedUnitsToPixels({ x: bounds.x2, y: bounds.y2 });
+
+      chart.sea[verb]({
+        cx: (p1.x + p2.x) / 2,
+        cy: (p1.y + p2.y) / 2,
+        r: Math.min(p2.x - p1.x, p1.y - p2.y) / 2
+      });
+    };
+
+    renderSea();
+    Highcharts.addEvent(chart, 'redraw', renderSea);
+  });
+</script>
+</body>
+</html>
